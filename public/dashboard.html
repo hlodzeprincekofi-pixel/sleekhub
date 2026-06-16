@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SleekHub Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); backdrop-filter:blur(20px); z-index:2000; justify-content:center; align-items:center; }
+        .chat-win { height:260px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:15px; padding:15px; display:flex; flex-direction:column; gap:10px; margin-bottom:15px; }
+        .msg { padding:8px 12px; border-radius:12px; font-size:0.85rem; max-width:80%; color:white; }
+        .msg.sent { align-self:flex-end; background:var(--primary); }
+        .msg.received { align-self:flex-start; background:rgba(255,255,255,0.1); }
+        .notif-bell { position:relative; cursor:pointer; font-size:1.4rem; }
+        .notif-badge { position:absolute; top:-5px; right:-5px; background:red; color:white; font-size:0.6rem; padding:2px 5px; border-radius:50%; font-weight:bold; }
+        .notif-panel { display:none; position:absolute; top:40px; right:0; width:220px; background:rgba(15, 23, 42, 0.95); border:1px solid var(--glass-border); border-radius:15px; padding:10px; z-index:100; box-shadow:0 10px 30px rgba(0,0,0,0.5); }
+        .dot { width:10px; height:10px; border-radius:50%; display:inline-block; border:2px solid #0f172a; position:absolute; bottom:0; right:0; }
+        #my-bio, #v-bio { white-space: pre-wrap; word-wrap: break-word; } /* FIX: Allows line breaks in bio */
+    </style>
+</head>
+<body style="display:block; overflow-y:auto; padding-bottom:50px;">
+
+    <!-- MODAL: EDIT PROFILE -->
+    <div id="e-modal" class="modal" onclick="if(event.target==this)this.style.display='none'">
+        <div class="container" style="max-width:380px;">
+            <h2 style="margin-bottom:15px;">Update Profile</h2>
+            <form id="edit-form">
+                <label style="font-size:0.8rem; color:var(--text-dim);">Your Bio</label>
+                <textarea name="bio" id="edit-bio" rows="4" style="width:100%; margin:8px 0; background:rgba(0,0,0,0.2);"></textarea>
+                <label style="font-size:0.8rem; color:var(--text-dim); margin-top:10px; display:block;">Change Profile Picture</label>
+                <input type="file" name="profile_pic" accept="image/*" style="margin-bottom:20px;">
+                <button type="submit">Apply Changes</button>
+                <button type="button" onclick="document.getElementById('e-modal').style.display='none'" style="background:none; color:gray; margin-top:10px;">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: VIEW OTHER PROFILE -->
+    <div id="p-modal" class="modal" onclick="if(event.target==this)this.style.display='none'">
+        <div class="container" style="max-width:380px; text-align:center;">
+            <img id="v-pic" style="width:100px; height:100px; border-radius:50%; border:3px solid var(--primary); margin-bottom:15px; object-fit:cover;">
+            <h2 id="v-name"></h2><p id="v-bio" class="subtitle" style="margin-bottom:20px;"></p>
+            <button id="v-chat-btn" style="background:var(--primary)">Private Chat</button>
+            <button id="v-del-btn" style="display:none; background:red; margin-top:10px;">Admin: Delete User</button>
+        </div>
+    </div>
+
+    <!-- MODAL: CHAT -->
+    <div id="c-modal" class="modal" onclick="if(event.target==this)this.style.display='none'">
+        <div class="container" style="max-width:450px;">
+            <h3 id="c-target-name" style="margin-bottom:15px;">Chat</h3>
+            <div id="c-history" class="chat-win"></div>
+            <div style="display:flex; gap:10px;"><input type="text" id="c-input" placeholder="Message..." style="margin:0;"><button onclick="sendMsg()" style="width:auto; padding:0 20px;">Send</button></div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid" style="display:grid; grid-template-columns:320px 1fr; gap:2.5rem; max-width:1150px; margin:40px auto; padding:0 20px;">
+        <!-- SIDEBAR -->
+        <div class="container" style="height:fit-content; position:sticky; top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <div class="notif-bell" onclick="toggleNotifs()">🔔<span id="n-count" class="notif-badge" style="display:none;">0</span><div id="n-panel" class="notif-panel"></div></div>
+                <button onclick="document.getElementById('e-modal').style.display='flex'" style="width:auto; padding:6px 15px; font-size:0.75rem;">EDIT PROFILE</button>
+            </div>
+            <div style="text-align:center;">
+                <img id="my-pic" style="width:110px; height:110px; border-radius:50%; border:4px solid var(--primary); margin-bottom:15px; object-fit:cover; box-shadow: 0 0 20px rgba(99,102,241,0.3);">
+                <h2 id="my-name">User</h2><p id="my-bio" class="subtitle" style="margin-bottom:20px;"></p>
+                <div id="admin-stats" style="display:none; background:rgba(255,255,255,0.05); padding:10px; border-radius:12px; font-size:0.7rem; border: 1px solid var(--primary);">ADMIN: <span id="s-u">0</span> Users | <span id="s-p">0</span> Posts</div>
+                <div style="text-align:left; margin-top:25px;">
+                    <input type="text" placeholder="Search people..." oninput="doSearch(this.value)" style="margin-bottom:10px; padding:0.7rem;">
+                    <div id="s-area" style="background:rgba(255,255,255,0.05); border-radius:10px;"></div>
+                    <label style="font-size:0.75rem; color:var(--primary); font-weight:800; letter-spacing:1px; margin-top:15px; display:block;">COMMUNITY</label>
+                    <div id="community-list" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;"></div>
+                </div>
+                <button onclick="window.location.href='/logout'" style="background:none; color:#f87171; font-size:0.8rem; margin-top:30px; font-weight:bold;">LOGOUT</button>
+            </div>
+        </div>
+
+        <!-- MAIN WALL -->
+        <div>
+            <div class="container" style="max-width:100%; margin-bottom:25px; border-radius:24px;">
+                <h3 style="margin-bottom:15px; font-size:1.1rem;">Post to Community</h3>
+                <textarea id="p-input" rows="2" placeholder="What's happening?"></textarea>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+                    <input type="file" id="p-image" accept="image/*" style="width:auto; font-size:0.7rem; background:none; border:none;">
+                    <button onclick="doPost()" style="width:auto; padding:10px 35px; font-size:0.9rem;">Post</button>
+                </div>
+            </div>
+            <div id="wall"></div>
+        </div>
+    </div>
+
+    <script>
+        let me = {}; let chatTarget = null;
+        function timeAgo(s) { const d = new Date(s); const n = new Date(); const diff = Math.floor((n-d)/1000); if(diff<60) return 'just now'; return Math.floor(diff/60) + 'm ago'; }
+
+        async function init() {
+            const res = await fetch('/api/me'); me = await res.json();
+            if(!me.loggedIn) return window.location.href='index.html';
+            document.getElementById('my-name').innerText = me.username;
+            document.getElementById('my-bio').innerText = me.bio || "Welcome to your profile! Add a bio to let people know who you are.";
+            document.getElementById('edit-bio').value = me.bio || ""; // FIX: Pre-loads current bio
+            document.getElementById('my-pic').src = (me.profile_pic==='default-avatar.png') ? `https://ui-avatars.com/api/?name=${me.username}&background=6366f1&color=fff` : '/uploads/'+me.profile_pic;
+            if(me.id === 1) { 
+                const s = await (await fetch('/api/admin/stats')).json();
+                document.getElementById('admin-stats').style.display='block';
+                document.getElementById('s-u').innerText = s.u_count; document.getElementById('s-p').innerText = s.p_count;
+            }
+            loadWall(); loadCommunity(); loadNotifs();
+        }
+
+        async function loadWall() {
+            const posts = await (await fetch('/api/posts')).json();
+            document.getElementById('wall').innerHTML = posts.map(p => `
+                <div class="container" style="max-width:100%; margin-bottom:18px; padding:22px; border-radius:24px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <div style="color:var(--primary); font-weight:bold; cursor:pointer;" onclick="showProfile('${p.username}')">@${p.username}</div>
+                        ${(p.username===me.username || me.id===1)?`<div onclick="doDelete(${p.id})" style="color:#f87171; cursor:pointer; font-size:0.75rem; font-weight:bold; border:1px solid rgba(248,113,113,0.3); padding:2px 6px; border-radius:4px;">DELETE</div>`:''}
+                    </div>
+                    <p style="margin-bottom:12px; line-height:1.5;">${p.content}</p>
+                    ${p.image ? `<img src="/uploads/${p.image}" style="width:100%; border-radius:18px; margin-bottom:12px; border:1px solid var(--glass-border);">` : ''}
+                    <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim);">
+                        <span onclick="doLike(${p.id})" style="cursor:pointer; font-weight:bold;">${p.has_liked?'❤️':'🤍'} ${p.likes}</span>
+                        <span>${timeAgo(p.timestamp)}</span>
+                    </div>
+                </div>`).join('');
+        }
+
+        async function doPost() {
+            const fd = new FormData(); fd.append('content', document.getElementById('p-input').value);
+            if(document.getElementById('p-image').files[0]) fd.append('post_image', document.getElementById('p-image').files[0]);
+            await fetch('/api/posts', { method:'POST', body: fd });
+            document.getElementById('p-input').value = ''; document.getElementById('p-image').value = ''; loadWall();
+        }
+
+        async function loadCommunity() {
+            const users = await (await fetch('/api/users')).json();
+            document.getElementById('community-list').innerHTML = users.map(u => {
+                const isOnline = (u.seconds_ago < 120);
+                return `<div style="position:relative;" onclick="showProfile('${u.username}')">
+                    <img src="/uploads/${u.profile_pic}" style="width:38px; height:38px; border-radius:50%; border:2.3px solid var(--primary); cursor:pointer;" onerror="this.src='https://ui-avatars.com/api/?name=${u.username}'">
+                    <div class="${isOnline?'dot':''}" style="background:#4ade80;"></div>
+                </div>`;
+            }).join('');
+        }
+
+        async function loadNotifs() {
+            const res = await (await fetch('/api/notifications')).json();
+            const unread = res.filter(n => !n.is_read).length;
+            if(unread > 0) { document.getElementById('n-count').style.display='block'; document.getElementById('n-count').innerText = unread; }
+            document.getElementById('n-panel').innerHTML = res.map(n => `<div style="font-size:0.75rem; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);"><b>${n.from_user}</b> ${n.type}</div>`).join('') || "No notifications";
+        }
+
+        async function showProfile(name) {
+            const u = await (await fetch('/api/user-profile/'+name)).json();
+            document.getElementById('v-name').innerText = u.username;
+            document.getElementById('v-bio').innerText = u.bio || "No bio added yet.";
+            document.getElementById('v-pic').src = (u.profile_pic==='default-avatar.png') ? `https://ui-avatars.com/api/?name=${u.username}&background=334155&color=fff` : '/uploads/'+u.profile_pic;
+            document.getElementById('v-chat-btn').onclick = () => startChat(u);
+            if(me.id===1 && u.id!==1) { document.getElementById('v-del-btn').style.display='block'; document.getElementById('v-del-btn').onclick = async () => { if(confirm('Delete user?')){ await fetch('/api/admin/user/'+u.id,{method:'DELETE'}); location.reload(); }}; }
+            document.getElementById('p-modal').style.display = 'flex';
+        }
+
+        function toggleNotifs() {
+            const p = document.getElementById('n-panel'); p.style.display = (p.style.display==='block')?'none':'block';
+            if(p.style.display==='block') { fetch('/api/notifications/read',{method:'POST'}); document.getElementById('n-count').style.display='none'; }
+        }
+
+        function startChat(u) { chatTarget=u; document.getElementById('p-modal').style.display='none'; document.getElementById('c-modal').style.display='flex'; document.getElementById('c-target-name').innerText = "Chat with " + u.username; refreshChat(); }
+        async function refreshChat() { if(!chatTarget || document.getElementById('c-modal').style.display==='none') return; const msgs=await(await fetch('/api/messages/'+chatTarget.id)).json(); document.getElementById('c-history').innerHTML=msgs.map(m=>`<div class="msg ${m.sender_id===me.id?'sent':'received'}">${m.content}</div>`).join(''); document.getElementById('c-history').scrollTop=9999; }
+        async function sendMsg() { const c=document.getElementById('c-input').value; if(!c)return; await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receiver_id:chatTarget.id,content:c})}); document.getElementById('c-input').value=''; refreshChat(); }
+        async function doLike(id) { await fetch(`/api/posts/${id}/like`, {method:'POST'}); loadWall(); loadNotifs(); }
+        async function doDelete(id) { if(confirm('Delete?')) { await fetch(`/api/posts/${id}`, {method:'DELETE'}); loadWall(); } }
+        async function doSearch(q) { if(!q) return document.getElementById('s-area').innerHTML=''; const res = await (await fetch('/api/search?q='+q)).json(); document.getElementById('s-area').innerHTML = res.map(u => `<div style="padding:8px; cursor:pointer; font-size:0.85rem;" onclick="showProfile('${u.username}')">@${u.username}</div>`).join(''); }
+        document.getElementById('edit-form').onsubmit = async (e) => { e.preventDefault(); await fetch('/api/update-profile', {method:'POST', body:new FormData(e.target)}); location.reload(); };
+
+        init();
+        setInterval(loadWall, 15000); setInterval(loadCommunity, 10000); setInterval(refreshChat, 3000);
+    </script>
+</body>
+</html>
